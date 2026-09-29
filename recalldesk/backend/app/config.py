@@ -1,6 +1,7 @@
 """
 RecallDesk configuration — all settings loaded from environment variables.
 """
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 from pathlib import Path
@@ -29,10 +30,13 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./recalldesk.db"
 
     # LLM Provider
-    LLM_PROVIDER: str = "openai"
-    LLM_MODEL: str = "gpt-4o-mini"
-    LLM_API_KEY: str = ""
-    LLM_BASE_URL: str = "https://api.openai.com/v1"           # optional: custom base URL
+    LLM_PROVIDER: str = "openai-compatible"
+    LLM_MODEL: str = "qwen/qwen3.7-max:free"
+    LLM_API_KEY: str = Field(
+        default="",
+        validation_alias=AliasChoices("LLM_API_KEY", "API_KEY"),
+    )
+    LLM_BASE_URL: str = "https://api.xkiro.com/v1"             # OpenAI-compatible API base
     LLM_MAX_TOKENS: int = 2048
     LLM_TEMPERATURE: float = 0.3
 
@@ -42,8 +46,8 @@ class Settings(BaseSettings):
     # embedded mode: start HindsightServer inside the process
     HINDSIGHT_EMBEDDED: bool = True
     # LLM for Hindsight memory extraction (can differ from main LLM)
-    HINDSIGHT_LLM_PROVIDER: str = "openai"
-    HINDSIGHT_LLM_MODEL: str = "gpt-4o-mini"
+    HINDSIGHT_LLM_PROVIDER: str = "openai-compatible"
+    HINDSIGHT_LLM_MODEL: str = "qwen/qwen3.7-max:free"
     HINDSIGHT_LLM_API_KEY: str = ""  # falls back to LLM_API_KEY if empty
     HINDSIGHT_LLM_BASE_URL: str = ""  # falls back to LLM_BASE_URL if empty
     # Embedding + reranker backends for the Hindsight server. "local" (default)
