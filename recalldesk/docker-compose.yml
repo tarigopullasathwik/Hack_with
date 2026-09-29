@@ -1,0 +1,73 @@
+# RecallDesk — full stack
+#
+#   docker compose up --build
+#
+#   Frontend : http://localhost:5173
+#   Backend  : http://localhost:8000   (docs at /docs)
+#   Hindsight: http://localhost:8888
+#
+# Requires LLM_API_KEY in a `.env` file next to this compose file (see .env.example).
+# The `hindsight` service bundles the local embedding/reranker models, so the
+# Windows host's ML stack is not involved — this is the most reliable way to run
+# real Hindsight memory locally.
+
+services:
+  # ── Persistent memory layer ────────────────────────────────────────────────
+  hindsight:
+    image: ghcr.io/vectorize-io/hindsight:latest
+    container_name: recalldesk-hindsight
+    restart: unless-stopped
+    ports:
+      - "8888:8888"
+    environment:
+      HINDSIGHT_API_LLM_PROVIDER: ${HINDSIGHT_LLM_PROVIDER:-openai}
+      HINDSIGHT_API_LLM_MODEL: ${HINDSIGHT_LLM_MODEL:-gpt-4o-mini}
+      HINDSIGHT_API_LLM_API_KEY: ${LLM_API_KEY}
+      HINDSIGHT_API_WORKER_ID: recalldesk-hindsight
+    volumes:
+      - hindsight-data:/home/hindsight/.pg0
+    shm_size: "1g"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8888/version || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 180s
+
+  # ── FastAPI agent backend ──────────────────────────────────────────────────
+  backend:
+    build: ./backend
+    container_name: recalldesk-backend
+    restart: unless-stopped
+    depends_on:
+      - hindsight
+    ports:
+      - "8000:8000"
+    environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
+      # Use the dedicated Hindsight service instead of an in-process server.
+      HINDSIGHT_EMBEDDED: "false"
+      HINDSIGHT_BASE_URL: http://hindsight:8888
+      HINDSIGHT_LLM_PROVIDER: ${HINDSIGHT_LLM_PROVIDER:-openai}
+      HINDSIGHT_LLM_MODEL: ${HINDSIGHT_LLM_MODEL:-gpt-4o-mini}
+      DATABASE_URL: sqlite:///./data/recalldesk.db
+      HOST: 0.0.0.0
+      PORT: "8000"
+    volumes:
+      - ./data:/app/data
+
+  # ── React frontend served by nginx (proxies /api to the backend) ───────────
+  frontend:
+    build: ./frontend
+    container_name: recalldesk-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  hindsight-data:

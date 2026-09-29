@@ -1,0 +1,21 @@
+fastapi>=0.120.3
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+pydantic-settings==2.6.1
+sqlalchemy==2.0.36
+openai>=1.66.0
+python-dotenv==1.0.1
+httpx==0.28.0
+
+# Hindsight memory layer (verified against 0.10.1)
+# hindsight-all bundles the local embedding/reranker models. If your platform
+# can't build that stack, install the slim bundle plus a remote provider instead:
+#   pip install "hindsight-all-slim==0.10.1"
+#   HINDSIGHT_API_EMBEDDINGS_PROVIDER=openai  HINDSIGHT_API_RERANKER_PROVIDER=rrf
+hindsight-all==0.10.1
+hindsight-client==0.10.1
+
+# Testing
+pytest==8.3.3
+pytest-asyncio==0.24.0
+httpx==0.28.0

@@ -1,0 +1,14 @@
+# Root-level ignores for this working folder.
+# The project itself lives in recalldesk/ and has its own .gitignore.
+
+# ─── Python virtualenvs (stray one at this level) ────────
+.venv/
+venv/
+env/
+
+# ─── Editor / OS ─────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
