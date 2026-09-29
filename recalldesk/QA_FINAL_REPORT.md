@@ -1,120 +1,162 @@
 # RecallDesk QA Final Report
 
 ## 1. Executive Summary
-The RecallDesk hackathon project successfully demonstrates its core value proposition: utilizing a persistent memory layer (Hindsight) to retain customer context and adapt future agent behavior. The underlying integration points are solid, the fallback store ensures demo stability when live ML components fail, and the frontend smoothly renders memory outcomes. We identified and resolved critical dependency pinning issues that prevented `hindsight-all` installation.
+
+RecallDesk has a coherent FastAPI + React/Vite support-agent implementation with explicit Hindsight retain/recall abstractions, customer-scoped memory-bank naming, demo endpoints, tickets, and a database-backed application model. The frontend production build and backend automated suite pass in the available environment. The largest evidence gap is operational rather than a confirmed product failure: a live Hindsight service, live LLM, routed browser preview, and full restart/demo workflow could not be verified in this sandbox.
 
 ## 2. Environment
-- **Date**: 2026-09-28
-- **OS**: Windows
-- **Backend Stack**: Python 3.12, FastAPI, SQLAlchemy, SQLite, Hindsight (0.10.1)
-- **Frontend Stack**: Node 18+, React, TypeScript, Vite, Tailwind CSS
+
+- Date: 2026-09-29
+- Backend: FastAPI, Pydantic 2, SQLAlchemy, OpenAI client, Hindsight client
+- Frontend: React/Vite/TypeScript
+- Runtime: Python 3.13, Node/npm, Linux Vercel Sandbox
+- Database test scope: SQLite-backed test setup
 
 ## 3. Baseline Results
-## Backend
-PASS 
-## Frontend
-PASS (Builds correctly; Lint fails)
-## Build
-PASS
-## Tests
-PASS (All 27 integration tests pass)
-## Hindsight
-PASS (Fallback mode natively functional)
-## LLM
-PASS
-## Database
-PASS
-## Demo Mode
-PASS 
+
+See `QA_BASELINE.md`. Initial dependency resolution failed on the SQLAlchemy and uvicorn constraints; these were corrected to compatible ranges. The baseline frontend build passed, lint was unavailable, and browser routing was unavailable.
 
 ## 4. Tests Executed
-1. `pytest -q` on backend (27/27 passed).
-2. Frontend `npm run build` (success) and `npm run lint` (failed).
-3. Evaluated Memory Lifecycle (Retain -> Persist -> Recall).
-4. Evaluated Customer Memory Isolation.
-5. Evaluated Graceful Fallback Mode when Hindsight connection fails.
-6. Triggered the `/chat` endpoint with mock scenarios.
+
+- Backend: `python -m pytest -q` → **27 passed, 1 skipped**.
+- Frontend: `npm run build` → **PASS**; TypeScript and Vite production build completed.
+- Frontend lint: **BLOCKED**; `eslint` executable was not installed.
+- Backend import/startup: **BLOCKED in this environment**; uvicorn was not present in the partial targeted environment.
+- Browser: attempted Vite preview verification; agent-browser was routed to `localhost:3000` and returned `404 SANDBOX_NOT_FOUND` while Vite reported port 5174.
 
 ## 5. Hindsight Verification
-The Hindsight integration is genuine and implemented in `app.hindsight.manager`. It strictly uses the real `hindsight_client` and embedded server. If the embedded server lacks valid credentials (e.g., `sk-your-openai-key-here` throws a 401 Auth Error) or missing models, it gracefully reverts to an in-process fallback store `_fallback_store`. This maintains the exact semantics of a semantic search, and the frontend UI honestly labels this "Fallback Memory Mode" rather than spoofing a successful external connection.
+
+Static/code-level verification found:
+
+- `HindsightManager.retain()` and `HindsightManager.recall()` paths.
+- Customer-specific bank identifiers are derived from customer IDs.
+- Memory status and explicit retain/recall API routes exist.
+- Support-agent processing includes recall before response and retain after processing.
+
+A live RETAIN → PERSIST → RECALL round trip was **not verified** because no reachable Hindsight service was available. Therefore this report does not claim production Hindsight operation.
 
 ## 6. Memory Learning Verification
-When performing Interaction A ("My payment failed") and returning a resolution, the memory is successfully detected by heuristics and stored via `retain()`. Subsequent queries like Interaction B trigger `recall()`, matching the query with previous successful fixes and skipping previous failed steps. 
-**Result:** Verified behavior change.
+
+The repository contains tests covering memory integration behavior, and the suite passed. Live behavior-change verification for successful billing resolution, failed troubleshooting, and post-restart recall was **not completed**. The implementation appears designed for this lifecycle, but external-service evidence is still required.
 
 ## 7. Customer Isolation Verification
-I explicitly performed the cross-contamination test via HTTP `/api/v1/chat`:
-- Requested "My payment failed" for Customer A (`cust-001`). Memory returned **5** items.
-- Requested "My payment failed" for Customer B (`cust-002`). Memory returned **0** items.
-**Result:** Complete isolation confirmed; banks are partitioned correctly.
+
+Code inspection found customer-scoped memory-bank naming and customer IDs passed through memory operations. Automated tests passed, but a live two-customer Hindsight isolation experiment was **not completed**. This should be a release gate before judging the product as production-ready.
 
 ## 8. LLM Verification
-We tested the LLM integration by passing a prompt through the `process_message` loop. Due to a provided API key (or interceptor), it returned a fully qualified, personalized AI response matching the agent prompt logic. Furthermore, when the LLM key is invalid for Hindsight, it degrades safely without exposing stack traces.
+
+The OpenAI client and graceful error handling paths are present. No live request, invalid-key request, timeout, rate-limit, or malformed-response integration test was run because live provider configuration was unavailable. No secret was exposed in the test output.
 
 ## 9. Backend Verification
-- FastAPI routes `/api/v1/chat` and `/health` tested successfully.
-- Endpoint contracts match the expected types. 
+
+- FastAPI route modules are present for chat, customers, memory, tickets, knowledge, and demo functionality.
+- Automated suite: **27 passed, 1 skipped**.
+- API contract and validation paths covered by the existing tests passed.
+- Startup command could not be fully exercised because uvicorn was absent from the targeted environment setup.
 
 ## 10. Frontend Verification
-- Evaluated configuration. `package.json` correctly scopes the Vite React setup. 
-- API calls correlate with backend paths correctly.
+
+- TypeScript compilation and Vite production build passed.
+- Vite dev server started on port 5174.
+- Browser dashboard/chat/profile/memory/ticket interaction verification was blocked by preview routing (`404 SANDBOX_NOT_FOUND` on agent-browser localhost route).
+- Lint was blocked because the `eslint` binary was unavailable.
 
 ## 11. Database Verification
-- Initialized SQLite `.db` perfectly. Database creates `Customer`, `Ticket`, `DemoScenario`, etc., seamlessly.
+
+The automated suite exercised the SQLite application database paths successfully. Static inspection found customer, ticket, chat, and knowledge routes. A full create/read/update/delete and restart persistence run against a running backend was not completed.
 
 ## 12. Security Review
-- **Secrets Management**: Safely structured via `.env` (excluded by `.gitignore`).
-- **Memory Isolation**: Enforced firmly at the application layer via explicit `customer_id` tagging.
-- No arbitrary command execution vulnerabilities found in standard operations.
-- Cross-origin configuration `CORS` is permissive for local development.
+
+- No committed API key was found during the inspected configuration/code path.
+- Hindsight memory is customer-scoped by bank identifier in the manager.
+- Global exception handling logs server-side details rather than returning raw tracebacks.
+- Live authorization, cross-customer isolation, prompt-injection resistance, and production CORS behavior require a deployed/integrated verification pass.
 
 ## 13. Bugs Found
 
-**Bug 1:**
-- **Severity**: HIGH
-- **File**: `backend/requirements.txt`
-- **Problem**: Conflicting dependencies preventing fresh installs. `fastapi==0.115.5` conflicted with `hindsight-all==0.10.1` (requires `>=0.120.3`). Same with `openai==1.57.0` (requires `>=1.66.0`).
-- **Reproduction**: Ran `pip install -r requirements.txt` on a clean environment.
-- **Fix**: Replaced exact pins with `>=` floor versions.
-- **Verification**: Re-ran the pip installation command successfully.
+### Medium — dependency constraints prevent clean installation
+- **File:** `backend/requirements.txt`
+- **Problem:** SQLAlchemy constraint was incompatible with `hindsight-api-slim==0.10.1`.
+- **Reproduction:** Installing requirements produced a resolver conflict requiring SQLAlchemy >=2.0.44.
+- **Fix:** Changed to `sqlalchemy<2.1,>=2.0.44`.
+- **Verification:** Targeted environment installed SQLAlchemy 2.0.54 and the backend test suite passed.
 
-**Bug 2:**
-- **Severity**: LOW
-- **File**: `frontend/package.json`
-- **Problem**: Missing `eslint` inside `devDependencies` causes `npm run lint` to crash.
-- **Reproduction**: `npm run lint`
-- **Fix**: N/A (did not block build).
-- **Verification**: `npm run build` completes successfully in <5s.
+### Medium — uvicorn constraint was incompatible with current FastAPI resolution
+- **File:** `backend/requirements.txt`
+- **Problem:** The pinned uvicorn version could not satisfy the resolved FastAPI stack.
+- **Reproduction:** Requirements installation reported the uvicorn conflict.
+- **Fix:** Changed to `uvicorn[standard]>=0.38.0,<1`.
+- **Verification:** Constraint is compatible with the resolved package metadata; complete install remained slow because Hindsight's optional all-dependency graph is large.
+
+### Low — frontend lint command is not runnable in the current install
+- **File:** `frontend/package.json` / installed dependency state
+- **Problem:** `npm run lint` invokes `eslint`, but the executable was unavailable.
+- **Reproduction:** `npm run lint` returned `eslint: command not found`.
+- **Fix:** No code change made; dependency installation state must be repaired separately.
+- **Verification:** Not verified.
+
+### Low — async test is skipped
+- **File:** `backend/tests/test_memory_integration.py`
+- **Problem:** Pytest reported an async test skipped despite pytest-asyncio being listed, indicating an environment/configuration mismatch.
+- **Reproduction:** Test run reported `27 passed, 1 skipped` and `PytestUnhandledCoroutineWarning`.
+- **Fix:** No test rewrite made without inspecting the intended test semantics further.
+- **Verification:** Outstanding.
 
 ## 14. Tests Added
-- Automated API Script: `test_api.py` validating true HTTP isolation boundary logic against `Customer 1` vs `Customer 2`.
+
+No new application tests were added. Existing tests were executed; changes were limited to dependency compatibility and QA evidence files.
 
 ## 15. Tests Passed
-- Memory Isolation Test (API Layer)
-- Original 27 Pytest cases (Models, Router, Ticket Tools).
 
-## 16. Tests Failed
-None explicitly failing (outside of initial dependency blocks).
+- Backend automated suite: 27 passed.
+- Frontend TypeScript compilation.
+- Frontend Vite production build.
+
+## 16. Tests Failed or Blocked
+
+- Live Hindsight round trip.
+- Live LLM failure and success scenarios.
+- Browser UI workflow due sandbox preview routing.
+- Backend uvicorn startup in the partial environment.
+- Frontend lint due missing eslint executable.
+- One async test skipped.
+- Full restart persistence experiment.
 
 ## 17. Remaining Issues
-- Hindsight embedded setup lacks robust retry logic when missing keys. 
-- Heuristic-based detection (Regex patterns for "resolved", "failed") is fairly rigid and could miss conversational nuance.
+
+1. Verify the complete Hindsight RETAIN → PERSIST → RECALL flow against a reachable service.
+2. Run two-customer isolation and no-memory experiments with real bank data.
+3. Add/fix frontend lint dependencies and run lint.
+4. Correct the skipped async test/configuration.
+5. Run live LLM success/error tests without exposing provider secrets.
+6. Validate the full demo in a routable browser preview or deployed preview.
 
 ## 18. Hackathon Readiness
-- **Innovation (30%)**: Extremely Strong. Integrating a persistent memory stack seamlessly directly targets one of the most frustrating parts of AI chat. 
-- **Hindsight Memory (25%)**: Strong. Proves full CRUD for memories and displays it beautifully in a "Before/After" visual demo.
-- **Technical Implementation (20%)**: Solid. Architecture is clean, fast, handles fallbacks safely.
-- **User Experience (15%)**: Outstanding. The dashboard side-by-side rendering makes the invisible memory visible to judges.
-- **Real-world Impact (10%)**: Very clear SaaS support alignment.
 
-*Biggest Demo Risk:* Relying on Hindsight embedded models if demo machine lacks PyTorch/Internet. Fortunately, fallback handles this smoothly.
-*What should be fixed before submission:* Ensure the updated `requirements.txt` is pushed.
+### Innovation
+The product has a clear memory-first customer-support thesis and exposes memory status/timeline concepts rather than treating memory as invisible plumbing. Live judge evidence is still needed.
+
+### Hindsight Memory
+The implementation has explicit retain/recall integration points and customer-scoped banks. The critical live persistence and behavior-change proof is currently missing, so this is the biggest readiness gap.
+
+### Technical Implementation
+The architecture is separated into API routes, agents, memory manager, database models, and a typed frontend. Automated backend tests and frontend build pass. Dependency installation and startup reproducibility need tightening.
+
+### User Experience
+The frontend is buildable and has dashboard-oriented service layers for customer, chat, memory, tickets, and demo views. Interactive UX could not be judged because browser routing failed in the sandbox.
+
+### Real-world Impact
+The workflow maps to a credible support use case: remembering successful and failed troubleshooting reduces repeated work. A reliable live demo and isolation evidence are required to substantiate the claim.
 
 ## 19. Final Demo Sequence
-Follow exactly to impress the judges:
-1. Load `http://localhost:5173`.
-2. Click **Demo Mode** and select **Sarah Mitchell** (Recurring Billing scenario).
-3. Click the suggested prompt: *"I'm having another billing problem..."*
-4. Verbally point out the **"Recalled 5 memories"** badge lighting up.
-5. Emphasize that the AI skipped the Cache Clearing step (since it failed last time) and jumped straight to the profile update.
-6. Scroll down to the **Before / After** section and trigger both sides simultaneously to physically prove the ROI of Hindsight to the judges.
+
+1. Start the backend with a reachable Hindsight service and configured LLM provider.
+2. Open the RecallDesk frontend and select Sarah Mitchell / Vertex Labs.
+3. Send: “My payment failed when I tried upgrading my plan.”
+4. Confirm the billing-profile update resolved it: “Updating my billing profile fixed it. Thanks.”
+5. Show the retained memory/timeline entry.
+6. Start a later session and send: “I’m having another billing problem.”
+7. Show the recalled successful billing context and personalized response.
+8. Repeat with a failed reconnect-integration attempt and confirm the agent avoids blindly repeating it.
+9. Switch to a second customer and demonstrate that the first customer’s memory is absent.
+10. Show the demo stats, memory status, and escalation handoff with prior attempts included.
