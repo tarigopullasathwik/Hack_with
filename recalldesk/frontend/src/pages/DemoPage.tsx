@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Sparkles, Brain, Activity, MessageSquare, ArrowRight,
-  Lightbulb, GitBranch,
+  Lightbulb, GitBranch, Play, RotateCcw, ChevronRight,
+  ShieldCheck, TrendingUp,
 } from 'lucide-react';
 import {
   getDemoScenarios, getDemoStats, getCustomer, getMemoryTimeline,
@@ -40,6 +41,7 @@ export default function DemoPage() {
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [recalled, setRecalled] = useState<RecalledMemory[]>([]);
   const [injected, setInjected] = useState<{ text: string; nonce: number }>();
+  const [walkthroughStep, setWalkthroughStep] = useState(0);
 
   useEffect(() => {
     getDemoScenarios().then(r => {
@@ -71,6 +73,26 @@ export default function DemoPage() {
   }, [active]);
 
   const send = (text: string) => setInjected({ text, nonce: Date.now() });
+  const walkthrough = [
+    { label: 'Set the scene', text: suggestedPrompts[0] ?? 'I am having another billing problem — my payment keeps failing.' },
+    { label: 'Reveal memory', text: suggestedPrompts[1] ?? 'The fix you gave me last time is not the issue this time.' },
+    { label: 'Show adaptation', text: suggestedPrompts[2] ?? 'This is urgent, I have tried everything already.' },
+  ];
+  const startWalkthrough = () => {
+    setWalkthroughStep(1);
+    send(walkthrough[0].text);
+  };
+  const nextWalkthroughStep = () => {
+    const next = Math.min(walkthroughStep + 1, walkthrough.length);
+    setWalkthroughStep(next);
+    if (next > 0 && next <= walkthrough.length) send(walkthrough[next - 1].text);
+  };
+  const resetWalkthrough = () => {
+    setWalkthroughStep(0);
+    setActivity([]);
+    setRecalled([]);
+    setInjected(undefined);
+  };
 
   return (
     <div className="max-w-[1400px] mx-auto px-6 py-5">
@@ -88,6 +110,51 @@ export default function DemoPage() {
           </p>
         </div>
         {stats && <HindsightBadge status={stats.hindsight_status} />}
+      </div>
+
+      {/* Presentation control deck */}
+      <section className="mb-5 rounded-2xl bg-gray-950 text-white p-5 shadow-lg shadow-gray-200/50" aria-label="Presentation controls">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+          <div className="max-w-xl">
+            <div className="flex items-center gap-2 text-brand-300 text-xs font-semibold uppercase tracking-[0.16em]">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              Live product walkthrough
+            </div>
+            <h2 className="text-xl font-bold mt-2">Show how memory changes the next reply.</h2>
+            <p className="text-sm text-gray-300 mt-1.5 leading-relaxed">
+              Start the scripted customer journey, then advance through the moments where RecallDesk remembers what worked, what failed, and why.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={startWalkthrough} className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-400 transition-colors">
+              <Play className="w-4 h-4" /> Start walkthrough
+            </button>
+            <button onClick={nextWalkthroughStep} disabled={walkthroughStep === 0 || walkthroughStep >= walkthrough.length} className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-2.5 text-sm font-medium text-gray-200 hover:bg-gray-800 disabled:opacity-40 transition-colors">
+              Next moment <ChevronRight className="w-4 h-4" />
+            </button>
+            <button onClick={resetWalkthrough} className="inline-flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-400 hover:text-white transition-colors" aria-label="Reset walkthrough">
+              <RotateCcw className="w-4 h-4" /> Reset
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-5">
+          {walkthrough.map((step, index) => (
+            <div key={step.label} className={`rounded-lg border px-3 py-2.5 ${walkthroughStep > index ? 'border-brand-400/60 bg-brand-500/15' : 'border-gray-800 bg-gray-900/60'}`}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-gray-200">{step.label}</span>
+                <span className="text-[10px] text-gray-500">0{index + 1}</span>
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1 line-clamp-1">{step.text}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Presenter proof points */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+        <div className="card p-3.5 flex items-center gap-3"><ShieldCheck className="w-5 h-5 text-emerald-500" /><div><div className="text-xs text-gray-400">Memory safety</div><div className="text-sm font-semibold text-gray-900">Customer-scoped recall</div></div></div>
+        <div className="card p-3.5 flex items-center gap-3"><Brain className="w-5 h-5 text-brand-500" /><div><div className="text-xs text-gray-400">What to highlight</div><div className="text-sm font-semibold text-gray-900">Past outcomes, not just facts</div></div></div>
+        <div className="card p-3.5 flex items-center gap-3"><TrendingUp className="w-5 h-5 text-amber-500" /><div><div className="text-xs text-gray-400">Business impact</div><div className="text-sm font-semibold text-gray-900">Fewer repeated fixes</div></div></div>
       </div>
 
       {/* Scenario cards */}
