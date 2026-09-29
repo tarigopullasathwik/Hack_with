@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Sparkles, Brain, Activity, MessageSquare, ArrowRight,
-  Lightbulb, GitBranch,
+  Lightbulb, GitBranch, PlayCircle,
 } from 'lucide-react';
 import {
   getDemoScenarios, getDemoStats, getCustomer, getMemoryTimeline,
@@ -40,6 +40,8 @@ export default function DemoPage() {
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [recalled, setRecalled] = useState<RecalledMemory[]>([]);
   const [injected, setInjected] = useState<{ text: string; nonce: number }>();
+  const [testRun, setTestRun] = useState<'idle' | 'running' | 'complete'>('idle');
+  const [testStep, setTestStep] = useState(0);
 
   useEffect(() => {
     getDemoScenarios().then(r => {
@@ -72,6 +74,27 @@ export default function DemoPage() {
 
   const send = (text: string) => setInjected({ text, nonce: Date.now() });
 
+  const runTestDemo = () => {
+    const prompts = suggestedPrompts.slice(0, 3);
+    if (!prompts.length) return;
+    setTestRun('running');
+    setTestStep(1);
+    send(prompts[0]);
+    window.setTimeout(() => {
+      if (prompts[1]) {
+        setTestStep(2);
+        send(prompts[1]);
+      }
+    }, 1800);
+    window.setTimeout(() => {
+      if (prompts[2]) {
+        setTestStep(3);
+        send(prompts[2]);
+      }
+      setTestRun('complete');
+    }, 3600);
+  };
+
   return (
     <div className="max-w-[1400px] mx-auto px-6 py-5">
       {/* Header */}
@@ -96,6 +119,43 @@ export default function DemoPage() {
           <ScenarioCard key={s.id} scenario={s} onSelect={selectScenario} active={active?.id === s.id} />
         ))}
       </div>
+
+      {active && (
+        <div className="card p-4 mb-5 border-brand-100 bg-gradient-to-r from-brand-50/70 via-white to-white">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-lg bg-brand-100 text-brand-600 flex items-center justify-center flex-shrink-0">
+                <PlayCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-semibold text-gray-900">Quick test demo</h2>
+                  {testRun === 'complete' && <span className="badge-green">Complete</span>}
+                  {testRun === 'running' && <span className="badge-blue">Running</span>}
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Replay three customer messages to show recall, adaptation, and memory-aware responses.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="hidden sm:flex items-center gap-1.5" aria-label={`Test progress: ${testStep} of 3`}>
+                {[1, 2, 3].map(step => (
+                  <span key={step} className={`w-2 h-2 rounded-full ${testStep >= step ? 'bg-brand-500' : 'bg-gray-200'}`} />
+                ))}
+              </div>
+              <button
+                onClick={runTestDemo}
+                disabled={testRun === 'running'}
+                className="btn-primary whitespace-nowrap"
+              >
+                <PlayCircle className="w-4 h-4" />
+                {testRun === 'running' ? 'Running test…' : 'Run test demo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {active && (
         <>
