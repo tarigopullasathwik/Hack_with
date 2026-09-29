@@ -1,6 +1,9 @@
 """
-LLM client abstraction — supports any OpenAI-compatible provider.
-Provider/model are configured via environment variables.
+LLM client — xKiro gateway (OpenAI-compatible).
+Base URL : https://api.xkiro.com/v1
+Models   : qwen/qwen3.7-flash:free  (primary — fastest)
+           qwen/qwen3.7-max:free    (fallback — higher quality)
+           qwen/qwen3.8-omni-flash:free (fallback 2)
 """
 import logging
 import time
@@ -9,7 +12,12 @@ from openai import OpenAI, APIError, APITimeoutError, RateLimitError
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
+
+FREE_MODELS = [
+    "qwen/qwen3.7-flash:free",
+    "qwen/qwen3.7-max:free",
+    "qwen/qwen3.8-omni-flash:free",
+]
 
 _client: Optional[OpenAI] = None
 
@@ -17,13 +25,11 @@ _client: Optional[OpenAI] = None
 def _get_client() -> OpenAI:
     global _client
     if _client is None:
-        kwargs = {
-            "api_key": settings.LLM_API_KEY or "sk-no-key",
-        }
-        base_url = settings.get_llm_base_url()
-        if base_url:
-            kwargs["base_url"] = base_url
-        _client = OpenAI(**kwargs)
+        settings = get_settings()
+        api_key = settings.LLM_API_KEY.strip()
+        base_url = (settings.LLM_BASE_URL or "https://api.xkiro.com/v1").strip()
+        logger.info(f"[LLM] base_url={base_url}  model={settings.LLM_MODEL}  key=SET")
+        _client = OpenAI(api_key=api_key, base_url=base_url)
     return _client
 
 
@@ -35,65 +41,60 @@ def call_llm(
     max_tokens: Optional[int] = None,
     retries: int = 2,
 ) -> str:
-    """
-    Call the configured LLM. Returns the response text.
-    Handles retries for rate limits and timeouts.
-    Falls back to a safe error message on persistent failure.
-    """
-    client = _get_client()
-    model = model or settings.LLM_MODEL
-    temperature = temperature if temperature is not None else settings.LLM_TEMPERATURE
-    max_tokens = max_tokens or settings.LLM_MAX_TOKENS
+    """Call xKiro LLM. Returns response text. Handles retries + model fallback."""
+    settings = get_settings()
+    client   = _get_client()
+    use_model = model or settings.LLM_MODEL or FREE_MODELS[0]
+    use_temp  = temperature if temperature is not None else settings.LLM_TEMPERATURE
+    use_tok   = max_tokens or settings.LLM_MAX_TOKENS
 
     full_messages = [{"role": "system", "content": system_prompt}] + messages
 
     for attempt in range(retries + 1):
         try:
             response = client.chat.completions.create(
-                model=model,
+                model=use_model,
                 messages=full_messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
+                temperature=use_temp,
+                max_tokens=use_tok,
             )
             text = response.choices[0].message.content or ""
+            logger.info(f"[LLM] ✓ {len(text)} chars  model={use_model}")
             return text.strip()
 
         except RateLimitError as e:
             wait = 2 ** attempt
-            logger.warning(f"Rate limit hit, waiting {wait}s (attempt {attempt+1}): {e}")
+            logger.warning(f"[LLM] Rate limit attempt {attempt+1}, wait {wait}s: {e}")
+            # rotate to next free model
+            if use_model in FREE_MODELS:
+                idx = FREE_MODELS.index(use_model)
+                if idx + 1 < len(FREE_MODELS):
+                    use_model = FREE_MODELS[idx + 1]
+                    logger.info(f"[LLM] Falling back to {use_model}")
             if attempt < retries:
                 time.sleep(wait)
             else:
-                return (
-                    "I'm currently experiencing high demand. Please try again in a moment. "
-                    "Your issue has been noted and a ticket is being created."
-                )
+                return ("I'm experiencing high demand. Please resend your message — "
+                        "your conversation context is preserved.")
 
         except APITimeoutError as e:
-            logger.warning(f"LLM timeout (attempt {attempt+1}): {e}")
+            logger.warning(f"[LLM] Timeout attempt {attempt+1}: {e}")
             if attempt < retries:
-                time.sleep(1)
+                time.sleep(2)
             else:
-                return (
-                    "My response timed out. I've logged your request. "
-                    "A support representative will follow up shortly."
-                )
+                return "Response timed out. Please try again — your history is saved."
 
         except APIError as e:
-            logger.error(f"LLM API error (attempt {attempt+1}): {e}")
+            logger.error(f"[LLM] API error attempt {attempt+1}: {e}")
+            if "401" in str(e) or "unauthorized" in str(e).lower():
+                return ("⚠️ API authentication failed. Please check your API key.")
             if attempt < retries:
                 time.sleep(1)
             else:
-                return (
-                    "I encountered a technical issue generating a response. "
-                    "Please try again or contact support directly."
-                )
+                return "I encountered a technical issue. Please try again."
 
         except Exception as e:
-            logger.error(f"Unexpected LLM error: {e}")
-            return (
-                "An unexpected error occurred. Your message has been logged. "
-                "Please try again."
-            )
+            logger.error(f"[LLM] Unexpected error: {e}", exc_info=True)
+            return "An unexpected error occurred. Please try again."
 
     return "Unable to generate a response at this time."
